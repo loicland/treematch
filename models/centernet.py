@@ -107,9 +107,9 @@ class Trainer(object):
         self.scheduler = optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=self.max_epoch)
         self.start_epoch = 0
 
-    def train_step(self, inputs, gt_discrete, logger=None):
+    def train_step(self, inputs, valid, gt_discrete, logger=None):
         inputs = inputs.to(self.device)
-        valid = inputs[:, [-1], :, :]  # (B,1,H,W)
+        valid = valid.to(self.device)
 
         B, _, H, W = inputs.shape
 

@@ -31,9 +31,9 @@ class Trainer(object):
 
         self.loss = nn.MSELoss().to(self.device)
 
-    def train_step(self, inputs, gt_discrete, logger):
+    def train_step(self, inputs, valid, gt_discrete, logger):
         inputs = inputs.to(self.device)
-        valid = inputs[:, [-1,]].to(self.device)
+        valid = valid.to(self.device)
 
         target_count = gt_discrete.sum(dim=(1, 2, 3)).to(self.device)
 

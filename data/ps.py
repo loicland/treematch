@@ -66,7 +66,7 @@ class PlanetScopeStrong(torch.utils.data.Dataset):
         points = np.array([[int(p[0]), int(p[1])] for p in points if 0 <= p[0] < image.shape[2] and 0 <= p[1] < image.shape[1]])
         if len(points) > 0:
             np.add.at(cm, (points[:, 0], points[:, 1]), 1.0)
-        return image, torch.from_numpy(valid), torch.from_numpy(cm[None, :, :])
+        return image, torch.from_numpy(valid)[None,], torch.from_numpy(cm[None, :, :])
 
     def __len__(self):
         return len(self.pts)
@@ -123,7 +123,7 @@ class PlanetScopeWeak(torch.utils.data.Dataset):
             [[int(p[0]), int(p[1])] for p in points if 0 <= p[0] < image.shape[2] and 0 <= p[1] < image.shape[1]])
         if len(points) > 0:
             np.add.at(cm, (points[:, 0], points[:, 1]), 1.0)
-        return image, torch.from_numpy(valid), cm[None, :, :]
+        return image, torch.from_numpy(valid)[None,], cm[None, :, :]
 
     def __len__(self):
         return len(self.pts)

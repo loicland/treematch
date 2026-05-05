@@ -19,7 +19,7 @@ M_EPS = 1e-16
 
 
 class Trainer(object):
-    def __init__(self, imsize, downscale_ratio, device, wc, wot, reg, reg_m, alpha, num_of_iter_in_ot, lr, clean_ratio, slack, convert_density, max_epoch, **kwargs):
+    def __init__(self, imsize, downscale_ratio, device, wc, wot, reg, reg_m, alpha, count_patchsize, num_of_iter_in_ot, lr, clean_ratio, slack, convert_density, max_epoch, **kwargs):
         self.device = device
         self.downscale_ratio = downscale_ratio
         self.wc = wc
@@ -27,6 +27,7 @@ class Trainer(object):
         self.reg = reg
         self.reg_m = reg_m
         self.alpha = alpha
+        self.count_patchsize = count_patchsize
         self.imsize = imsize
         self.num_of_iter_in_ot = num_of_iter_in_ot
         self.lr = lr
@@ -34,6 +35,8 @@ class Trainer(object):
         self.max_epoch = max_epoch
         self.slack = slack
         self.convert_density = convert_density
+
+        assert self.imsize % self.count_patchsize == 0, "imsize must be a multiple of count_patchsize"
 
     def setup(self, backbone):
         self.device = torch.device(self.device)
@@ -61,9 +64,9 @@ class Trainer(object):
         self.mse = nn.MSELoss().to(self.device)
         self.mae = nn.L1Loss().to(self.device)
 
-    def train_step(self, inputs, gt_discrete, logger):
+    def train_step(self, inputs, valid, gt_discrete, logger):
         inputs = inputs.to(self.device)
-        valid = inputs[:, [-1,]].to(self.device)
+        valid = valid.to(self.device)
 
         if self.downscale_ratio > 1:
             valid = nn.functional.interpolate(valid.float(), scale_factor=1/self.downscale_ratio, mode="bilinear")
@@ -76,7 +79,6 @@ class Trainer(object):
             # density = points_to_density(inds.cpu().numpy(), 64, 64, 2, device=self.device)
             # densities.append(density)
             points.append(inds.float())
-        gd_count = np.array([len(p) for p in points], dtype=np.float32)
         points = [p.to(self.device) for p in points]
         gt_discrete = gt_discrete.to(self.device)
         # densities = torch.cat(densities, dim=0).to(self.device)
@@ -92,18 +94,25 @@ class Trainer(object):
                 # compute OT loss on clean samples
                 outputs_clean = outputs[:clean_batch_size]
                 points_clean = points[:clean_batch_size]
-                gd_count_clean = gd_count[:clean_batch_size]
+                gt_discrete_clean = gt_discrete[:clean_batch_size]
             else:
                 outputs_clean = outputs
                 points_clean = points
-                gd_count_clean = gd_count
+                gt_discrete_clean = gt_discrete
 
             # Compute uOT loss on clean samples.
             ot_loss = self.uot_loss.forward(outputs_clean, points_clean, slack=False)
-            # ot_loss = 0
-            # Compute counting loss on clean samples.
-            count_loss = self.mae(outputs_clean.sum(1).sum(1).sum(1), torch.from_numpy(gd_count_clean).float().to(self.device)) * self.wc
-            # if noisy samples exist, compute UOT loss
+            # Compute counting loss on clean samples over patches
+            patches_pred = outputs_clean.unfold(2, self.count_patchsize, self.count_patchsize
+                                                ).unfold(3, self.count_patchsize, self.count_patchsize
+                                                         ).contiguous().view(outputs_clean.size(0), -1, self.count_patchsize, self.count_patchsize)
+            patches_gt = gt_discrete_clean.unfold(2, self.count_patchsize, self.count_patchsize
+                                            ).unfold(3, self.count_patchsize, self.count_patchsize
+                                                     ).contiguous().view(gt_discrete_clean.size(0), -1, self.count_patchsize, self.count_patchsize)
+            count_loss = self.mae(patches_pred.sum(-1).sum(-1),
+                                  patches_gt[:, :, :, :].sum(-1).sum(-1).float()) * self.wc
+
+            # if noisy samples, compute UOT loss
             if clean_batch_size < N:
                 outputs_noisy = outputs[clean_batch_size:]
                 points_noisy = points[clean_batch_size:]
@@ -120,8 +129,12 @@ class Trainer(object):
                 ot_loss = ot_loss + uot_loss
             ot_loss = ot_loss * self.wot
 
+            if torch.isnan(ot_loss):
+                raise ValueError("loss is nan")
+
             pred_count = torch.sum(outputs.view(N, -1), dim=1).detach().cpu().numpy()
-            mae = np.mean(np.abs(pred_count - gd_count))
+            gt_count = torch.sum(gt_discrete.view(N, -1), dim=1).detach().cpu().numpy()
+            mae = np.mean(np.abs(pred_count - gt_count))
 
             loss = count_loss + ot_loss
             if logger is not None:
@@ -191,7 +204,8 @@ class uOT_Loss(nn.Module):
             reach=reg_m ** 0.5,
             # reach=None,
             debias=False,
-            potentials=True
+            potentials=True,
+            backend="tensorized"
         )
 
         self.num_iter = num_of_iter_in_ot

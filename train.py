@@ -30,12 +30,12 @@ def get_preds(loader, trainer, device):
         for inp, valid, tgt in loader:
             output = trainer.predict(inp.to(device))
             preds.extend(output.cpu())
-            valids.append(valid.cpu())
+            valids.extend(valid.cpu())
             targets.extend(tgt.cpu())
     return torch.cat(preds), torch.cat(targets), torch.cat(valids)
 
 
-def evaluate(preds, gts, gsd_m, masks):
+def evaluate(preds, gts, masks, gsd_m):
     # Apply validity mask — zero out ignored pixels before any metric computation
     masks = masks.float()
     preds = preds * masks
@@ -52,11 +52,11 @@ def evaluate(preds, gts, gsd_m, masks):
     mae = torch.abs(tgt_counts - pred_counts).mean().item()
     nmae = mae / (tgt_counts.mean().item() + 1e-8)
 
-    # RMSE in objects/ha: scale counts by (10_000 / patch_area_m2)
-    patch_area_m2 = pixel_counts * (gsd_m ** 2)          # m² of labeled pixels per sample
-    counts_to_ha = 10_000 / patch_area_m2                 # scalar to convert raw count → objects/ha
+    # RMSE in trees/ha
+    patch_area_m2 = pixel_counts * (gsd_m ** 2)
+    counts_to_ha = 10_000 / patch_area_m2
     pred_ha = pred_counts * counts_to_ha
-    tgt_ha  = tgt_counts  * counts_to_ha
+    tgt_ha = tgt_counts * counts_to_ha
     rmse = torch.sqrt(((tgt_ha - pred_ha) ** 2).mean()).item()
 
     metrics = {
@@ -66,6 +66,29 @@ def evaluate(preds, gts, gsd_m, masks):
         "rmse": rmse,
     }
     return metrics
+
+def evaluate_at_fixed_scale(preds, gts, masks, gsd_m, eval_patch_size):
+    """
+    Tile predictions into fixed-size windows before computing RMSE,
+    so the metric is always computed at the same spatial scale.
+
+    Args:
+        preds/gts/masks:  (N, H, W) tensors
+        gsd_m:            ground sampling distance in metres
+        eval_patch_size:  side length in pixels of the canonical evaluation tile
+    """
+    preds, gts, masks = _tile(preds, eval_patch_size), _tile(gts, eval_patch_size), _tile(masks, eval_patch_size)
+    return evaluate(preds, gts, masks, gsd_m)
+
+
+def _tile(x, patch_size):
+    """Fold a (N, H, W) tensor into (N*n_tiles, patch_size, patch_size) tiles."""
+    N, H, W = x.shape
+    assert H % patch_size == 0 and W % patch_size == 0, \
+        f"Image size ({H}x{W}) must be divisible by eval_patch_size ({patch_size})"
+    x = x.reshape(N, H // patch_size, patch_size, W // patch_size, patch_size)
+    x = x.permute(0, 1, 3, 2, 4).reshape(-1, patch_size, patch_size)
+    return x
 
 
 @hydra.main(version_base=None, config_path="conf", config_name="train")
@@ -116,13 +139,14 @@ def train(cfg):
     log_metrics = ["nmae", "rmse"]
     for epoch in range(cfg.train.nepoch):
         trainer.train()  # Set model to training mode
-        for step, (inputs, gt_discrete) in enumerate(train_loader):
+        for step, (inputs, valid, gt_discrete) in enumerate(train_loader):
             if noisy_batch_size > 0:
-                inputs_noisy, gt_discrete_noisy = next(noisy_loader)
+                inputs_noisy, valid_noisy, gt_discrete_noisy = next(noisy_loader)
                 # concatenate
                 inputs = torch.cat([inputs, inputs_noisy], dim=0)
+                valid = torch.cat([valid, valid_noisy], dim=0)
                 gt_discrete = torch.cat([gt_discrete, gt_discrete_noisy], dim=0)
-            trainer.train_step(inputs, gt_discrete, logger)
+            trainer.train_step(inputs, valid, gt_discrete, logger)
 
         if (epoch + 1) % cfg.train.val_freq == 0:
             trainer.eval()
@@ -132,8 +156,8 @@ def train(cfg):
 
             with torch.no_grad():
                 # test
-                test_pred, test_target = get_preds(test_loader, trainer, device)
-                test_metrics = evaluate(test_pred, test_target)
+                test_pred, test_target, test_valid = get_preds(test_loader, trainer, device)
+                test_metrics = evaluate_at_fixed_scale(test_pred, test_target, gsd_m=cfg.dataset.gsd, masks=test_valid, eval_patch_size=64)
                 logger.log({"test/"+k: v for k, v in test_metrics.items() if k in log_metrics})
 
                 if test_metrics["nmae"] < best_nmae:
@@ -144,8 +168,8 @@ def train(cfg):
                     logger.summary.update(best_metrics)
                     torch.save(backbone.state_dict(), os.path.join(logdir, "best_model.pth"))
 
-            if hasattr(trainer, "scheduler"):
-                trainer.scheduler.step()
+        if hasattr(trainer, "scheduler"):
+            trainer.scheduler.step()
 
     logger.finish()
 

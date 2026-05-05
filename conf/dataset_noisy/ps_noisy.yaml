@@ -1,4 +1,4 @@
-_target_: data.ps.PSUnlabeledDataset
+_target_: data.ps.PlanetScopeWeak
 imsize: ${train.imsize}
 preload: False
 nbands: 20

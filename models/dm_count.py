@@ -42,9 +42,9 @@ class Trainer(object):
         self.mse = nn.MSELoss().to(self.device)
         self.mae = nn.L1Loss().to(self.device)
 
-    def train_step(self, inputs, gt_discrete, logger):
+    def train_step(self, inputs, valid, gt_discrete, logger):
         inputs = inputs.to(self.device)
-        valid = inputs[:, [-1,]].to(self.device)
+        valid = valid.to(self.device)
 
         #convert gt_discrete to points
         points = []

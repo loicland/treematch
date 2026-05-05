@@ -72,7 +72,7 @@ class GaofenStrong(torch.utils.data.Dataset):
         points = np.array([[int(p[0]), int(p[1])] for p in points if 0 <= p[0] < image.shape[2] and 0 <= p[1] < image.shape[1]])
         if len(points) > 0:
             np.add.at(cm, (points[:, 0], points[:, 1]), 1.0)
-        return image, torch.from_numpy(valid), torch.from_numpy(cm[None, :, :])
+        return image, torch.from_numpy(valid)[None,], torch.from_numpy(cm[None, :, :])
 
     def preload(self):
         self.data = []
@@ -151,12 +151,13 @@ class GaofenWeak(torch.utils.data.Dataset):
 
         im = torch.from_numpy(im).float()
         im = self.normalize(im)
+        valid = torch.ones(im.shape[1], im.shape[2])
         im = torch.cat([im, torch.ones(1, im.shape[1], im.shape[2])], dim=0)  # add valid mask
 
         chm = crop['chm']
         # pseudo_density = self.chm_to_density(chm)
         # return im, pseudo_density[None, :, :]
-        return im, torch.from_numpy(cm[None, :, :])
+        return im, valid[None,], torch.from_numpy(cm[None, :, :])
 
     def loader(self, batch_size, num_workers):
         return DataLoader(self, batch_size=batch_size, shuffle=True, num_workers=num_workers, drop_last=True)

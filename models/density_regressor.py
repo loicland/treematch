@@ -31,11 +31,11 @@ class Trainer(object):
 
         self.start_epoch = 0
 
-        self.loss = nn.MSELoss(reduction="sum").to(self.device)
+        self.loss = nn.MSELoss(reduction="none").to(self.device)
 
-    def train_step(self, inputs, gt_discrete, logger):
+    def train_step(self, inputs, valid, gt_discrete, logger):
         inputs = inputs.to(self.device)
-        valid = inputs[:, [-1,]].to(self.device)
+        valid = valid.to(self.device)
 
         target_density = []
         points_list = []
@@ -43,16 +43,14 @@ class Trainer(object):
         for b in range(N):
             points = torch.nonzero(gt_discrete[b, 0, :, :], as_tuple=False)
             points_list.append(points.float().to(self.device))
-            density = points_to_density(points.cpu().numpy(), H, W, self.sigma, device=self.device)
-            #sanity: sum of density should equal number of points
+            density = points_to_density(points.cpu().numpy(), H, W, self.sigma, device=self.device) * 100
             target_density.append(density)
-        target_density = torch.cat(target_density, dim=0).to(self.device) * 100
+        target_density = torch.cat(target_density, dim=0).to(self.device)
 
         with torch.set_grad_enabled(True):
             outputs = nn.functional.softplus(self.backbone(inputs))
-            outputs = outputs * valid  # mask invalid regions
 
-            loss = self.loss(outputs, target_density)
+            loss = (self.loss(outputs, target_density) * valid).mean()
 
             logger.log({
                 'train/loss': loss.item(),
@@ -64,10 +62,9 @@ class Trainer(object):
 
     def predict(self, inputs):
         inputs = inputs.to(self.device)
-        valid = inputs[:, [-1,]].to(self.device)
         with torch.no_grad():
-            outputs = nn.functional.softplus(self.backbone(inputs)) / 100.0
-        return outputs * valid  # mask invalid regions
+            outputs = nn.functional.softplus(self.backbone(inputs)) / 100
+        return outputs  # mask invalid regions
 
     def train(self):
         self.backbone.train()
