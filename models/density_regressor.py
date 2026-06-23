@@ -62,9 +62,10 @@ class Trainer(object):
 
     def predict(self, inputs):
         inputs = inputs.to(self.device)
+        valid = inputs[:, [-1,]].to(self.device)
         with torch.no_grad():
-            outputs = nn.functional.softplus(self.backbone(inputs)) / 100
-        return outputs  # mask invalid regions
+            outputs = nn.functional.softplus(self.backbone(inputs)) / 100.0
+        return outputs * valid  # mask invalid regions
 
     def train(self):
         self.backbone.train()

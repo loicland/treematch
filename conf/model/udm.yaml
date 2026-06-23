@@ -6,7 +6,6 @@ wot: 1  # weight for OT loss
 reg: 5e-3  # epsilon: entropic regularization term in OT (cost of moving mass)
 reg_m: 0.2  # tau: KL marginal regularization term in OT (cost of creating mass)
 alpha: 0.8  # maximum variation from residuals
-count_patchsize: 64  # MAE is computed over per-patch sums with this size, must be a factor of imsize
 num_of_iter_in_ot: 100
 device: ${train.device}
 max_epoch: ${train.nepoch}

@@ -19,7 +19,7 @@ M_EPS = 1e-16
 
 
 class Trainer(object):
-    def __init__(self, imsize, downscale_ratio, device, wc, wot, reg, reg_m, alpha, count_patchsize, num_of_iter_in_ot, lr, clean_ratio, slack, convert_density, max_epoch, **kwargs):
+    def __init__(self, imsize, downscale_ratio, device, wc, wot, reg, reg_m, alpha, num_of_iter_in_ot, lr, clean_ratio, slack, convert_density, max_epoch, **kwargs):
         self.device = device
         self.downscale_ratio = downscale_ratio
         self.wc = wc
@@ -27,7 +27,6 @@ class Trainer(object):
         self.reg = reg
         self.reg_m = reg_m
         self.alpha = alpha
-        self.count_patchsize = count_patchsize
         self.imsize = imsize
         self.num_of_iter_in_ot = num_of_iter_in_ot
         self.lr = lr
@@ -35,8 +34,6 @@ class Trainer(object):
         self.max_epoch = max_epoch
         self.slack = slack
         self.convert_density = convert_density
-
-        assert self.imsize % self.count_patchsize == 0, "imsize must be a multiple of count_patchsize"
 
     def setup(self, backbone):
         self.device = torch.device(self.device)
@@ -102,15 +99,10 @@ class Trainer(object):
 
             # Compute uOT loss on clean samples.
             ot_loss = self.uot_loss.forward(outputs_clean, points_clean, slack=False)
-            # Compute counting loss on clean samples over patches
-            patches_pred = outputs_clean.unfold(2, self.count_patchsize, self.count_patchsize
-                                                ).unfold(3, self.count_patchsize, self.count_patchsize
-                                                         ).contiguous().view(outputs_clean.size(0), -1, self.count_patchsize, self.count_patchsize)
-            patches_gt = gt_discrete_clean.unfold(2, self.count_patchsize, self.count_patchsize
-                                            ).unfold(3, self.count_patchsize, self.count_patchsize
-                                                     ).contiguous().view(gt_discrete_clean.size(0), -1, self.count_patchsize, self.count_patchsize)
-            count_loss = self.mae(patches_pred.sum(-1).sum(-1),
-                                  patches_gt[:, :, :, :].sum(-1).sum(-1).float()) * self.wc
+            # Compute counting loss on clean samples
+            pred_counts = outputs_clean.view(outputs_clean.size(0), -1).sum(-1)
+            gt_counts = gt_discrete_clean.view(gt_discrete_clean.size(0), -1).sum(-1).float()
+            count_loss = self.mae(pred_counts, gt_counts) * self.wc
 
             # if noisy samples, compute UOT loss
             if clean_batch_size < N:

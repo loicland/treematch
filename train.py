@@ -1,4 +1,7 @@
 import random
+
+import torch
+
 from models.backbones import *
 import hydra
 from omegaconf import OmegaConf
@@ -38,6 +41,7 @@ def get_preds(loader, trainer, device):
 def evaluate(preds, gts, masks, gsd_m):
     # Apply validity mask — zero out ignored pixels before any metric computation
     masks = masks.float()
+
     preds = preds * masks
     gts = gts * masks
 
@@ -124,7 +128,7 @@ def train(cfg):
     trainer.setup(backbone)
 
     logger = wandb.init(
-        project="treedensity",
+        project="treedensity_rebuttal",
         config=OmegaConf.to_container(cfg),
         reinit="create_new"
     )
