@@ -1,5 +1,5 @@
 defaults:
-  - model: udm
+  - model: treematch
   - backbone: resnet50
   - dataset: ps
   - dataset_noisy: ${dataset}_noisy
