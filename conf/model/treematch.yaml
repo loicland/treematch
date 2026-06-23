@@ -1,5 +1,5 @@
-_target_: models.udm.Trainer
-name: udm
+_target_: models.treematch.Trainer
+name: treematch
 lr: 1e-5
 wc: 1  # weight for counting loss
 wot: 1  # weight for OT loss
