@@ -67,11 +67,11 @@ TreeMatch is an optimal-transport-based training method for tree density estimat
 Training is configured via [Hydra](https://hydra.cc/). The main entry point is `train.py`:
 
 ```bash
-# Train TreeMatch (UDM) on PlanetScope with clean labels only
-python train.py dataset=ps model=udm train.clean_ratio=1.0 model.lr=8e-05
+# Train TreeMatch on PlanetScope with clean labels only
+python train.py dataset=ps model=treematch train.clean_ratio=1.0 model.lr=8e-05
 
 # Train with 80% clean + 20% noisy labels
-python train.py dataset=ps model=udm train.clean_ratio=0.8 model.lr=8e-05
+python train.py dataset=ps model=treematch train.clean_ratio=0.8 model.lr=8e-05
 
 # Train density regression baseline
 python train.py dataset=ps model=density_regressor
@@ -99,7 +99,7 @@ dataset_roots:
 
 | Model | Config | Description |
 |-------|--------|-------------|
-| TreeMatch (UDM) | `model=udm` | Unbalanced OT density matching with slack for noisy labels |
+| TreeMatch | `model=treematch` | Unbalanced OT density matching with slack for noisy labels |
 | Density Regression | `model=density_regressor` | Gaussian density map regression (MSE loss) |
 | DM-Count | `model=dm_count` | Balanced OT with total variation loss |
 | CenterNet | `model=centernet` | Keypoint detection with heatmap regression |
